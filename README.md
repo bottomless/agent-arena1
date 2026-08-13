@@ -1,197 +1,187 @@
-<p align="center">
-  <img src="packages/website/public/logo.svg" width="64" height="64" alt="Paseo logo">
-</p>
+# Agent Arena
 
-<h1 align="center">Paseo</h1>
+Agent Arena is a blinded A/B testing environment for coding agents, built as an
+[AGPL-licensed](LICENSE) fork of [Paseo](https://github.com/getpaseo/paseo). It runs two
+OpenCode agents in separate Git worktrees, hides their model identities until a vote, and promotes
+the selected worktree into the continuing conversation.
 
-<p align="center">
-  <a href="README.md">English</a> ·
-  <a href="README.zh-CN.md">简体中文</a> ·
-  <a href="README.ja.md">日本語</a> ·
-  <a href="README.ko.md">한국어</a>
-</p>
+This README is the tester quickstart for the Electron desktop app.
 
-<p align="center">
-  <a href="https://github.com/getpaseo/paseo/stargazers">
-    <img src="https://img.shields.io/github/stars/getpaseo/paseo?style=flat&logo=github" alt="GitHub stars">
-  </a>
-  <a href="https://github.com/getpaseo/paseo/releases">
-    <img src="https://img.shields.io/github/v/release/getpaseo/paseo?style=flat&logo=github" alt="GitHub release">
-  </a>
-  <a href="https://x.com/moboudra">
-    <img src="https://img.shields.io/badge/%40moboudra-555?logo=x" alt="X">
-  </a>
-  <a href="https://discord.gg/jz8T2uahpH">
-    <img src="https://img.shields.io/badge/Discord-555?logo=discord" alt="Discord">
-  </a>
-  <a href="https://www.reddit.com/r/PaseoAI/">
-    <img src="https://img.shields.io/badge/Reddit-555?logo=reddit" alt="Reddit">
-  </a>
-</p>
+## What you need
 
-<p align="center">One interface for Claude Code, Codex, Copilot, OpenCode, and Pi agents.</p>
+- macOS or Linux. The commands below use a POSIX shell (`zsh` or `bash`).
+- Git.
+- Node.js 22.20.0 (the version pinned in [`.tool-versions`](.tool-versions)) and npm.
+- An [OpenRouter](https://openrouter.ai/) API key with available credit.
+- The stable `opencode` CLI on your `PATH`. Install it with:
 
-<p align="center">
-  <img src="https://paseo.sh/hero-mockup.png" alt="Paseo app screenshot" width="100%">
-</p>
+  ```bash
+  npm install -g opencode-ai
+  opencode --version
+  ```
 
-<p align="center">
-  <img src="https://paseo.sh/mobile-mockup.png" alt="Paseo mobile app" width="100%">
-</p>
+Arena uses OpenCode as the harness, but model inference goes through the local Arena proxy and your
+OpenRouter key. You do not need to configure a separate model inside OpenCode.
 
-Run agents in parallel on your own machines. Ship from your phone or your desk.
-
-- **Self-hosted:** Agents run on your machine with your full dev environment. Use your tools, your configs, and your skills.
-- **Multi-provider:** Claude Code, Codex, Copilot, OpenCode, and Pi through the same interface. Pick the right model for each job.
-- **Voice control:** Dictate tasks or talk through problems in voice mode. Hands-free when you need it.
-- **Cross-device:** iOS, Android, desktop, web, and CLI. Start work at your desk, check in from your phone, script it from the terminal.
-- **Privacy-first:** Paseo doesn't have any telemetry, tracking, or forced log-ins.
-
-## Getting Started
-
-Paseo runs a local server called the daemon that manages your coding agents. Clients like the desktop app, mobile app, web app, and CLI connect to it.
-
-### Prerequisites
-
-You need at least one agent CLI installed and configured with your credentials:
-
-- [Claude Code](https://docs.anthropic.com/en/docs/claude-code)
-- [Codex](https://github.com/openai/codex)
-- [GitHub Copilot](https://github.com/features/copilot/cli/)
-- [OpenCode](https://github.com/anomalyco/opencode)
-- [Pi](https://pi.dev)
-
-### Desktop app (recommended)
-
-Download it from [paseo.sh/download](https://paseo.sh/download) or the [GitHub releases page](https://github.com/getpaseo/paseo/releases). Open the app and the daemon starts automatically. Nothing else to install.
-
-To connect from your phone, open **Settings → your host → Pair Device**.
-
-### CLI / headless
-
-Install the CLI and start Paseo:
+## 1. Clone and install
 
 ```bash
-npm install -g @getpaseo/cli
-paseo
+git clone https://github.com/bottomless/agent-arena1.git
+cd agent-arena1
+npm install --workspaces --include-workspace-root
 ```
 
-Paseo starts locally, then asks whether to enable the end-to-end encrypted relay for device pairing. If you decline, connect directly over TCP, Tailscale, or another VPN. This path is useful for servers and remote machines.
-
-For full setup and configuration, see:
-
-- [Docs](https://paseo.sh/docs)
-- [Connectivity guide](https://paseo.sh/docs/connectivity)
-- [Configuration reference](https://paseo.sh/docs/configuration)
-
-### Docker
-
-Run the Paseo daemon and self-hosted web UI in Docker:
+Build the local packages needed by Electron and its managed daemon:
 
 ```bash
-docker run -d --name paseo \
-  -p 6767:6767 \
-  -e PASEO_PASSWORD=change-me \
-  -v "$PWD/paseo-home:/home/paseo" \
-  -v "$PWD:/workspace" \
-  ghcr.io/getpaseo/paseo:latest
-```
-
-Open `http://localhost:6767` after it starts. Extend the base image with the agent CLIs you use, then provide credentials through environment variables or the persistent `/home/paseo` volume. See the [Docker documentation](docs/docker.md) for full setup details.
-
-## CLI
-
-Everything you can do in the app, you can do from the terminal.
-
-```bash
-paseo run --provider claude/opus-4.6 "implement user authentication"
-paseo run --provider codex/gpt-5.5 --worktree feature-x "implement feature X"
-
-paseo ls                           # list running agents
-paseo attach abc123                # stream live output
-paseo send abc123 "also add tests" # follow-up task
-
-# run on a remote daemon
-paseo --host workstation.local:6767 run "run the full test suite"
-```
-
-See the [full CLI reference](https://paseo.sh/docs/cli) for more.
-
-## TypeScript SDK
-
-Build issue integrations, dashboards, and orchestration services with `@getpaseo/client`:
-
-```ts
-import { createPaseoClient } from "@getpaseo/client";
-
-const client = createPaseoClient({ url: "ws://127.0.0.1:6767/ws" });
-await client.connect();
-
-const agent = await client.agents.create({
-  config: { provider: "codex/gpt-5.5" },
-  cwd: "/Users/me/dev/storefront",
-  prompt: "Review the current diff and name the riskiest change.",
-});
-
-const result = await agent.waitForFinish();
-console.log(result.lastMessage);
-
-await client.close();
-```
-
-See the [SDK quickstart](https://paseo.sh/docs/sdk/quickstart), [recipes](https://paseo.sh/docs/sdk/recipes), and [API reference](https://paseo.sh/docs/sdk/reference).
-
-## Skills
-
-Skills teach your agent to use Paseo to orchestrate other agents.
-
-```bash
-npx skills add getpaseo/paseo
-```
-
-Then use them in any agent conversation:
-
-- `/paseo-handoff` — hand off work between agents. I use this to plan with Claude and then handoff to Codex to implement.
-- `/paseo-advisor` — spin up a single agent as an advisor for a second opinion, without delegating the work itself.
-- `/paseo-committee` — form a committee of two contrasting agents to step back, do root cause analysis, and produce a plan.
-
-## Development
-
-Quick monorepo package map:
-
-- `packages/server`: Paseo daemon (agent process orchestration, WebSocket API, MCP server)
-- `packages/arena-proxy`: blinded OpenRouter-compatible backend for [Paseo Arena](docs/arena.md)
-- `packages/app`: Expo client (iOS, Android, web)
-- `packages/cli`: `paseo` CLI for daemon and agent workflows
-- `packages/desktop`: Electron desktop app
-- `packages/relay`: Relay transport and encryption used by the daemon and clients
-- `packages/website`: Marketing site and documentation (`paseo.sh`)
-
-Common commands:
-
-```bash
-# run all local dev services
-npm run dev
-
-# run individual surfaces
-npm run dev:server
-npm run dev:app
-npm run dev:desktop
-npm run dev:website
-
-# build the server stack
 npm run build:server
-
-# repo-wide checks
-npm run typecheck
+npm run build --workspace=@getpaseo/expo-two-way-audio
 ```
 
-## Related projects
+These builds are only required after a fresh clone or after changing dependencies/shared packages.
 
-- [getpaseo/paseo-relay](https://github.com/getpaseo/paseo-relay) — official distributed relay, written in Elixir
-- [paseo-skins](https://github.com/huangguang1999/paseo-skins) — community themes and a zero-patch desktop theme loader with an Agent Skill
-- [paseo-vscode](https://marketplace.visualstudio.com/items?itemName=hinnes.paseo-vscode) — VS Code extension
+## 2. Configure Arena
 
-## License
+Create the local environment file:
 
-AGPL-3.0
+```bash
+cp packages/arena-proxy/.env.example packages/arena-proxy/.env
+openssl rand -hex 32
+```
+
+Open `packages/arena-proxy/.env` and replace:
+
+- `replace-with-a-long-random-token` with the output from `openssl rand -hex 32`.
+- `replace-with-an-openrouter-key` with your OpenRouter API key.
+
+Leave the remaining defaults unchanged. In particular, both processes should use
+`http://127.0.0.1:6770` for `ARENA_PROXY_URL`.
+
+The `.env` file is ignored by Git. Never commit or share it.
+
+## 3. Start the proxy
+
+From the repository root, open terminal 1 and run:
+
+```bash
+set -a
+source packages/arena-proxy/.env
+set +a
+npm run dev:arena
+```
+
+Wait for:
+
+```text
+Paseo Arena proxy listening on http://127.0.0.1:6770
+```
+
+Keep this terminal running.
+
+## 4. Start Electron
+
+From the repository root, open terminal 2 and run:
+
+```bash
+set -a
+source packages/arena-proxy/.env
+set +a
+npm run dev:desktop
+```
+
+Launch Electron from this terminal, not Finder or an application launcher. Electron must inherit
+the Arena environment variables. The desktop launcher starts Metro and its own managed Paseo daemon;
+do not start `npm run dev:server` separately.
+
+The first launch can take a minute while Electron and Metro initialize. Keep terminal 2 open while
+testing. Arena Electron uses daemon port `6869`, separate from Paseo's usual development port
+`6768`, so both checkouts can run at the same time.
+
+## 5. Run a battle
+
+1. In Electron, add or open a local Git repository. The repository must have at least one commit so
+   Arena can create worktrees.
+2. Create a new workspace/chat.
+3. Confirm the **Battle** toggle is on. It defaults to on for a new chat.
+4. Enter a coding task and submit it.
+5. Watch candidates A and B work side by side. A side becomes selectable when that side finishes.
+6. Select **Choose A**, **Choose B**, or **Tie**. A tie is recorded as a tie and advances A.
+7. After the vote, the model names are revealed and the battle collapses into the normal timeline.
+   Expand the battle summary to inspect both transcripts, the bounded A-vs-B diff, and its summary.
+8. Send another message. It should continue from the selected worktree and normal winning transcript.
+
+To test single-agent mode, turn **Battle** off before submitting. The thinking selector appears in
+single-agent mode. You can switch between battle and single-agent turns within the same chat.
+
+Arena currently accepts text prompts only.
+
+## Stop everything
+
+- Quit Electron normally or press `Ctrl+C` in terminal 2. The desktop-managed daemon shuts down with
+  the app.
+- Press `Ctrl+C` in terminal 1 to stop the Arena proxy.
+
+Runtime state remains local:
+
+- Electron/Paseo development state: `.dev/`
+- Proxy battle records: `packages/arena-proxy/.data/`
+- Local credentials: `packages/arena-proxy/.env`
+
+All three paths are ignored by Git.
+
+## Troubleshooting
+
+### `OpenCode binary not found`
+
+Confirm the same shell that starts Electron can find it:
+
+```bash
+command -v opencode
+opencode --version
+```
+
+If needed, install it with `npm install -g opencode-ai`, then restart terminal 2.
+
+### Arena is unavailable or asks for a newer host
+
+Quit Electron completely and restart it from terminal 2 after sourcing
+`packages/arena-proxy/.env`. Do not use an already-installed Paseo app; testers must run this
+checkout with `npm run dev:desktop`.
+
+### `Arena requires ARENA_PROXY_URL and ARENA_API_TOKEN`
+
+Electron did not inherit the Arena environment. Quit it and repeat all four lines in the terminal 2
+launch block.
+
+### Proxy returns `401`, `Unauthorized`, or an unknown-token error
+
+Stop both processes. Confirm terminal 1 and terminal 2 source the same `.env` file, then restart the
+proxy first and Electron second.
+
+### Port `6770` is already in use
+
+Stop the older Arena proxy. If you intentionally choose another port, update both
+`ARENA_PROXY_PORT` and `ARENA_PROXY_URL` in `.env` before restarting both processes.
+
+### Port `6869` is already in use
+
+Another Agent Arena development daemon is running. Quit the older Arena Electron development
+instance before starting this one. Standard Paseo development uses a different port (`6768`), and
+the packaged Paseo app normally uses `6767`.
+
+### Electron opens but stays blank
+
+Wait for Metro to finish in terminal 2. If Metro exited, stop Electron and rerun
+`npm run dev:desktop`. On a fresh checkout, also confirm the two build commands in step 1 completed.
+
+## Development notes
+
+- [Arena architecture and model policy](docs/arena.md)
+- [Paseo development guide](docs/development.md)
+- [Repository testing guide](docs/testing.md)
+
+## License and attribution
+
+Agent Arena is derived from Paseo and remains licensed under
+[AGPL-3.0-or-later](LICENSE). Preserve upstream copyright and license notices when redistributing or
+modifying this fork.
