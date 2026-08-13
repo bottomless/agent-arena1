@@ -49,6 +49,10 @@ function diffFileHeaderStyle({ pressed }: PressableStateCallbackType) {
   return [styles.diffFileHeader, pressed ? styles.pressed : null];
 }
 
+function diffDisclosureHeaderStyle({ pressed }: PressableStateCallbackType) {
+  return [styles.diffDisclosureHeader, pressed ? styles.pressed : null];
+}
+
 function cardHeaderStyle({ pressed }: PressableStateCallbackType) {
   return [styles.cardHeader, pressed ? styles.pressed : null];
 }
@@ -566,11 +570,6 @@ function ArenaDiffView({ diff }: { diff: ArenaBattleDiff }) {
   );
   return (
     <View style={styles.diffRoot}>
-      <Text style={styles.sectionTitle}>
-        A vs B diff · {diff.changedFiles} changed file
-        {diff.changedFiles === 1 ? "" : "s"}
-        {diff.truncated ? " · bounded" : ""}
-      </Text>
       {diff.files.map((file) => (
         <ArenaDiffFileView
           key={file.path}
@@ -581,6 +580,38 @@ function ArenaDiffView({ diff }: { diff: ArenaBattleDiff }) {
       ))}
       {diff.files.length === 0 ? (
         <Text style={styles.muted}>No differences between A and B.</Text>
+      ) : null}
+    </View>
+  );
+}
+
+function ArenaDiffDisclosure({ diff }: { diff: ArenaBattleDiff }) {
+  const [expanded, setExpanded] = useState(false);
+  const toggleExpanded = useCallback(() => setExpanded((value) => !value), []);
+  const accessibilityState = useMemo(() => ({ expanded }), [expanded]);
+  return (
+    <View style={styles.diffDisclosure} testID="arena-diff-disclosure">
+      <Pressable
+        onPress={toggleExpanded}
+        style={diffDisclosureHeaderStyle}
+        accessibilityRole="button"
+        accessibilityState={accessibilityState}
+        testID="arena-diff-disclosure-toggle"
+      >
+        {expanded ? <ChevronDown size={15} /> : <ChevronRight size={15} />}
+        <Text style={styles.diffDisclosureTitle}>
+          A vs B diff · {diff.changedFiles} changed file
+          {diff.changedFiles === 1 ? "" : "s"}
+          {diff.truncated ? " · bounded" : ""}
+        </Text>
+      </Pressable>
+      {expanded ? (
+        <ScrollView
+          style={styles.diffDisclosureBody}
+          contentContainerStyle={styles.diffDisclosureContent}
+        >
+          <ArenaDiffView diff={diff} />
+        </ScrollView>
       ) : null}
     </View>
   );
@@ -609,15 +640,16 @@ function ComparisonSummary({ battle }: { battle: ArenaBattle }) {
 }
 
 function ArenaComparison({ battle }: { battle: ArenaBattle }) {
-  if (!battle.diff && battle.comparison.status === "pending") return null;
   return (
-    <ScrollView style={styles.comparison} contentContainerStyle={styles.comparisonContent}>
-      {battle.diff ? <ArenaDiffView diff={battle.diff} /> : null}
-      <View style={styles.summary}>
-        <Text style={styles.sectionTitle}>AI comparison</Text>
-        <ComparisonSummary battle={battle} />
+    <View style={styles.comparison} testID="arena-comparison">
+      <View style={styles.comparisonContent}>
+        <View style={styles.summary}>
+          <Text style={styles.sectionTitle}>AI comparison</Text>
+          <ComparisonSummary battle={battle} />
+        </View>
+        {battle.diff ? <ArenaDiffDisclosure diff={battle.diff} /> : null}
       </View>
-    </ScrollView>
+    </View>
   );
 }
 
@@ -688,6 +720,7 @@ export const ArenaBattleView = memo(function ArenaBattleView({
   onDecided,
   readOnly = false,
   inline = false,
+  showComparison = true,
 }: {
   serverId: string;
   battle: ArenaBattle;
@@ -695,6 +728,7 @@ export const ArenaBattleView = memo(function ArenaBattleView({
   onDecided?: (battle: ArenaBattle) => void;
   readOnly?: boolean;
   inline?: boolean;
+  showComparison?: boolean;
 }) {
   const client = useHostRuntimeClient(serverId);
   const upsertBattle = useArenaStore((state) => state.upsertBattle);
@@ -802,7 +836,7 @@ export const ArenaBattleView = memo(function ArenaBattleView({
           </Button>
         </View>
       ) : null}
-      {bothTerminal || battle.comparison.status !== "pending" ? (
+      {showComparison && (bothTerminal || battle.comparison.status !== "pending") ? (
         <ArenaComparison battle={battle} />
       ) : null}
     </View>
@@ -836,9 +870,10 @@ export const ArenaBattleSummaryCard = memo(function ArenaBattleSummaryCard({
           {summaryCardLabel(supported, battle)}
         </Text>
       </Pressable>
+      {battle && supported ? <ArenaComparison battle={battle} /> : null}
       {expanded && battle && supported ? (
         <View style={styles.expandedCard}>
-          <ArenaBattleView serverId={serverId} battle={battle} readOnly />
+          <ArenaBattleView serverId={serverId} battle={battle} readOnly showComparison={false} />
         </View>
       ) : null}
     </View>
@@ -973,7 +1008,6 @@ const styles = StyleSheet.create((theme) => ({
     fontSize: theme.fontSize.sm,
   },
   comparison: {
-    maxHeight: 260,
     borderTopWidth: 1,
     borderTopColor: theme.colors.border,
     backgroundColor: theme.colors.surface1,
@@ -984,6 +1018,34 @@ const styles = StyleSheet.create((theme) => ({
   },
   diffRoot: {
     gap: theme.spacing[2],
+  },
+  diffDisclosure: {
+    borderWidth: 1,
+    borderColor: theme.colors.border,
+    borderRadius: theme.borderRadius.md,
+    overflow: "hidden",
+    backgroundColor: theme.colors.surface0,
+  },
+  diffDisclosureHeader: {
+    minHeight: 36,
+    paddingHorizontal: theme.spacing[2],
+    flexDirection: "row",
+    alignItems: "center",
+    gap: theme.spacing[2],
+  },
+  diffDisclosureTitle: {
+    flex: 1,
+    color: theme.colors.foreground,
+    fontSize: theme.fontSize.sm,
+    fontWeight: theme.fontWeight.semibold,
+  },
+  diffDisclosureBody: {
+    maxHeight: 220,
+    borderTopWidth: 1,
+    borderTopColor: theme.colors.border,
+  },
+  diffDisclosureContent: {
+    padding: theme.spacing[2],
   },
   sectionTitle: {
     color: theme.colors.foreground,
