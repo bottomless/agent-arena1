@@ -60,12 +60,10 @@ export const TurnFooter = memo(function TurnFooter({
 }) {
   if (isRunning) {
     return (
-      <TurnFooterRow>
-        <RunningTurnFooter
-          inFlightTurnStartedAt={inFlightTurnStartedAt}
-          onForkInFlightTurn={onForkInFlightTurn}
-        />
-      </TurnFooterRow>
+      <RunningTurnIndicator
+        inFlightTurnStartedAt={inFlightTurnStartedAt}
+        onForkInFlightTurn={onForkInFlightTurn}
+      />
     );
   }
   if (!host) {
@@ -80,6 +78,23 @@ export const TurnFooter = memo(function TurnFooter({
       supportsTimelineCursor={supportsTimelineCursor}
       onForkAssistantTurn={onForkAssistantTurn}
     />
+  );
+});
+
+export const RunningTurnIndicator = memo(function RunningTurnIndicator({
+  inFlightTurnStartedAt,
+  onForkInFlightTurn,
+}: {
+  inFlightTurnStartedAt: Date | null;
+  onForkInFlightTurn?: InFlightTurnForkHandler;
+}) {
+  return (
+    <TurnFooterRow>
+      <RunningTurnFooter
+        inFlightTurnStartedAt={inFlightTurnStartedAt}
+        onForkInFlightTurn={onForkInFlightTurn}
+      />
+    </TurnFooterRow>
   );
 });
 

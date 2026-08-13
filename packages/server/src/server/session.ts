@@ -253,6 +253,7 @@ import {
 import { runGitCommand } from "../utils/run-git-command.js";
 import { CreateAgentLifecycleDispatch } from "./agent/create-agent-lifecycle-dispatch.js";
 import { resolveWorktreeSourceCwd } from "./workspace-source.js";
+import { ArenaBattleService } from "./arena/battle-service.js";
 
 type ProviderSubagentManagerEvent = Extract<
   AgentManagerEvent,
@@ -305,6 +306,10 @@ function clientUsesLegacyWorkspaceRestore(appVersion: string | null): boolean {
   return (
     appVersion !== null && !isAppVersionAtLeast(appVersion, MIN_VERSION_EXPLICIT_WORKSPACE_RECOVERY)
   );
+}
+
+function resolveArenaServerId(serverId: string | undefined): string {
+  return serverId ?? "unknown-server";
 }
 
 type DeleteFencedAgentStorage = AgentStorage & {
@@ -613,6 +618,7 @@ export class Session {
   private readonly sessionLogger: pino.Logger;
   private readonly paseoHome: string;
   private readonly worktreesRoot: string | undefined;
+  private readonly serverId: string;
 
   private agentManager: AgentManager;
   private readonly agentStorage: AgentStorage;
@@ -676,6 +682,7 @@ export class Session {
   private readonly hubExecutionController: HubExecutionController | null;
   private readonly workspaceScripts: WorkspaceScriptsService;
   private readonly createAgentLifecycleDispatch: CreateAgentLifecycleDispatch;
+  private arenaBattleService: ArenaBattleService | null = null;
 
   constructor(options: SessionOptions) {
     const {
@@ -745,6 +752,7 @@ export class Session {
     this.pushNotifications = pushNotifications;
     this.paseoHome = paseoHome;
     this.worktreesRoot = worktreesRoot;
+    this.serverId = resolveArenaServerId(serverId);
     this.sessionLogger = logger.child({
       module: "session",
       clientId: this.clientId,
@@ -1823,6 +1831,7 @@ export class Session {
       this.dispatchAgentRewindMessage(msg) ??
       this.dispatchAgentRelationshipMessage(msg) ??
       this.dispatchAgentTimelineMessage(msg, source) ??
+      this.dispatchArenaMessage(msg) ??
       this.dispatchHubExecutionMessage(msg) ??
       this.dispatchAgentLifecycleMessage(msg) ??
       this.dispatchAgentConfigMessage(msg) ??
@@ -1953,6 +1962,25 @@ export class Session {
       return this.hubExecutionController?.controlExecution(msg);
     }
     return undefined;
+  }
+
+  private dispatchArenaMessage(msg: SessionInboundMessage): Promise<void> | undefined {
+    switch (msg.type) {
+      case "arena.battle.start.request":
+        return this.handleArenaBattleStart(msg);
+      case "arena.battle.get.request":
+        return this.handleArenaBattleGet(msg);
+      case "arena.battle.list.request":
+        return this.handleArenaBattleList(msg);
+      case "arena.battle.vote.request":
+        return this.handleArenaBattleVote(msg);
+      case "arena.battle.stop.request":
+        return this.handleArenaBattleStop(msg);
+      case "arena.single.turn.request":
+        return this.handleArenaSingleTurn(msg);
+      default:
+        return undefined;
+    }
   }
 
   private dispatchAgentLifecycleMessage(msg: SessionInboundMessage): Promise<void> | undefined {
@@ -4440,6 +4468,7 @@ export class Session {
       name: resolveWorkspaceDisplayName(workspace),
       title: workspace.title,
       pinnedAt: workspace.pinnedAt,
+      internal: workspace.internal,
       archivingAt: null,
       status: "done",
       statusEnteredAt: null,
@@ -6061,6 +6090,131 @@ export class Session {
         },
       });
     }
+  }
+
+  private getArenaBattleService(): ArenaBattleService {
+    if (this.arenaBattleService) return this.arenaBattleService;
+    this.arenaBattleService = new ArenaBattleService({
+      paseoHome: this.paseoHome,
+      serverId: this.serverId,
+      agentManager: this.agentManager,
+      agentStorage: this.agentStorage,
+      logger: this.sessionLogger.child({ module: "arena" }),
+      getWorkspace: (workspaceId) => this.workspaceRegistry.get(workspaceId),
+      createWorktree: (input) => this.createPaseoWorktreeWorkflow(input),
+      archiveWorkspace: (workspaceId) => this.archiveArenaWorkspace(workspaceId),
+      setWorkspaceInternal: async (workspaceId, internal) => {
+        const updatedAt = new Date().toISOString();
+        const workspace = await this.workspaceRegistry.update(workspaceId, (record) => ({
+          ...record,
+          internal,
+          updatedAt,
+        }));
+        if (!workspace) throw new Error(`Workspace not found: ${workspaceId}`);
+      },
+      emitUpdate: (battle) => {
+        this.emit({ type: "arena.battle.update", payload: { battle } });
+      },
+    });
+    return this.arenaBattleService;
+  }
+
+  private async handleArenaBattleStart(
+    request: Extract<SessionInboundMessage, { type: "arena.battle.start.request" }>,
+  ): Promise<void> {
+    const battle = await this.getArenaBattleService().startBattle({
+      sourceAgentId: request.sourceAgentId,
+      workspaceId: request.workspaceId,
+      prompt: request.prompt,
+    });
+    this.emit({
+      type: "arena.battle.start.response",
+      payload: { requestId: request.requestId, battle },
+    });
+  }
+
+  private async handleArenaBattleGet(
+    request: Extract<SessionInboundMessage, { type: "arena.battle.get.request" }>,
+  ): Promise<void> {
+    const battle = await this.getArenaBattleService().getBattle(request.battleId);
+    this.emit({
+      type: "arena.battle.get.response",
+      payload: { requestId: request.requestId, battle },
+    });
+  }
+
+  private async handleArenaBattleList(
+    request: Extract<SessionInboundMessage, { type: "arena.battle.list.request" }>,
+  ): Promise<void> {
+    const battles = await this.getArenaBattleService().listBattles({
+      agentId: request.agentId,
+      workspaceId: request.workspaceId,
+    });
+    this.emit({
+      type: "arena.battle.list.response",
+      payload: { requestId: request.requestId, battles },
+    });
+  }
+
+  private async handleArenaBattleVote(
+    request: Extract<SessionInboundMessage, { type: "arena.battle.vote.request" }>,
+  ): Promise<void> {
+    const battle = await this.getArenaBattleService().vote(request.battleId, request.decision);
+    this.emit({
+      type: "arena.battle.vote.response",
+      payload: { requestId: request.requestId, battle },
+    });
+  }
+
+  private async handleArenaBattleStop(
+    request: Extract<SessionInboundMessage, { type: "arena.battle.stop.request" }>,
+  ): Promise<void> {
+    const battle = await this.getArenaBattleService().stop(request.battleId);
+    this.emit({
+      type: "arena.battle.stop.response",
+      payload: { requestId: request.requestId, battle },
+    });
+  }
+
+  private async handleArenaSingleTurn(
+    request: Extract<SessionInboundMessage, { type: "arena.single.turn.request" }>,
+  ): Promise<void> {
+    const result = await this.getArenaBattleService().runSingleTurn({
+      agentId: request.agentId,
+      workspaceId: request.workspaceId,
+      prompt: request.prompt,
+      thinkingLevel: request.thinkingLevel ?? "high",
+    });
+    this.emit({
+      type: "arena.single.turn.response",
+      payload: { requestId: request.requestId, ...result },
+    });
+  }
+
+  private async archiveArenaWorkspace(workspaceId: string): Promise<void> {
+    const existing = await this.workspaceRegistry.get(workspaceId);
+    if (!existing || existing.archivedAt) return;
+    await archiveByScope(
+      {
+        paseoHome: this.paseoHome,
+        paseoWorktreesBaseRoot: this.worktreesRoot,
+        github: this.github,
+        workspaceGitService: this.workspaceGitService,
+        agentManager: this.agentManager,
+        agentStorage: this.agentStorage,
+        findWorkspaceIdForCwd: (cwd) => this.findWorkspaceIdForCwd(cwd),
+        getWorkspace: (id) => this.workspaceRegistry.get(id),
+        listActiveWorkspaces: () => this.listActiveWorkspaceRefs(),
+        archiveWorkspaceRecord: (id) => this.archiveWorkspaceRecord(id),
+        emitWorkspaceUpdatesForWorkspaceIds: (ids) => this.emitWorkspaceUpdatesForWorkspaceIds(ids),
+        markWorkspaceArchiving: (ids, archivingAt) => this.markWorkspaceArchiving(ids, archivingAt),
+        clearWorkspaceArchiving: (ids) => this.clearWorkspaceArchiving(ids),
+        killTerminalsForWorkspace: (id) => this.terminalController.killTerminalsForWorkspace(id),
+        stopWorkspaceSetup: (id) => this.workspaceSetupRuntime.stop(id),
+        sessionLogger: this.sessionLogger,
+      },
+      { scope: { kind: "workspace", workspaceId }, requestId: `arena-${uuidv4()}` },
+    );
   }
 
   private async handleWorkspaceClearAttentionRequest(

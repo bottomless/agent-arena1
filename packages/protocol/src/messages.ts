@@ -59,6 +59,22 @@ import {
 } from "./browser-automation/rpc-schemas.js";
 import { BrowserAutomationHostCapabilitySchema } from "./browser-automation/capabilities.js";
 import {
+  ArenaBattleGetRequestSchema,
+  ArenaBattleGetResponseSchema,
+  ArenaBattleListRequestSchema,
+  ArenaBattleListResponseSchema,
+  ArenaBattleStartRequestSchema,
+  ArenaBattleStartResponseSchema,
+  ArenaBattleStopRequestSchema,
+  ArenaBattleStopResponseSchema,
+  ArenaBattleUpdateSchema,
+  ArenaBattleVoteRequestSchema,
+  ArenaBattleVoteResponseSchema,
+  ArenaSingleTurnRequestSchema,
+  ArenaSingleTurnResponseSchema,
+} from "./arena.js";
+export * from "./arena.js";
+import {
   PaseoConfigRawSchema,
   PaseoLifecycleCommandRawSchema,
   PaseoMetadataGenerationEntrySchema,
@@ -2701,6 +2717,12 @@ export const HubExecutionControlRequestSchema = z.object({
 export type HubExecutionControlRequest = z.infer<typeof HubExecutionControlRequestSchema>;
 
 export const SessionInboundMessageSchema = z.discriminatedUnion("type", [
+  ArenaBattleStartRequestSchema,
+  ArenaBattleGetRequestSchema,
+  ArenaBattleListRequestSchema,
+  ArenaBattleVoteRequestSchema,
+  ArenaBattleStopRequestSchema,
+  ArenaSingleTurnRequestSchema,
   HubExecutionAgentCreateRequestSchema,
   HubExecutionAgentValidateRequestSchema,
   HubExecutionControlRequestSchema,
@@ -3036,6 +3058,8 @@ export const ServerInfoStatusPayloadSchema = z
     features: z
       .object({
         providersSnapshot: z.boolean().optional(),
+        // COMPAT(arenaBattles): added in v0.4.0-beta.1, remove after 2027-02-12 once daemon floor >= v0.4.0-beta.1.
+        arenaBattles: z.boolean().optional(),
         // COMPAT(providersSnapshotCwd): added in v0.3.2, remove gate after 2027-02-10.
         providersSnapshotCwd: z.boolean().optional(),
         // COMPAT(checkoutForgeSetAutoMerge): added in v0.1.106, remove old
@@ -3431,6 +3455,9 @@ export const WorkspaceDescriptorPayloadSchema = z
     title: z.string().nullable().optional(),
     // COMPAT(workspacePinning): added in v0.1.107, remove optional after 2027-01-12.
     pinnedAt: z.string().nullable().optional(),
+    // COMPAT(internalWorkspaces): Arena-managed workspaces are hidden from normal
+    // workspace navigation until the winning side is promoted.
+    internal: z.boolean().optional(),
     archivingAt: z.string().nullable().optional().default(null),
     status: WorkspaceStateBucketSchema,
     // Best-effort workspace status entry timestamp. Old daemons omit the
@@ -5647,6 +5674,13 @@ export function parseHubExecutionOutboundMessage(value: unknown): HubExecutionOu
 export type DaemonUpdateProgressMessage = z.infer<typeof DaemonUpdateProgressMessageSchema>;
 
 export const SessionOutboundMessageSchema = z.discriminatedUnion("type", [
+  ArenaBattleStartResponseSchema,
+  ArenaBattleGetResponseSchema,
+  ArenaBattleListResponseSchema,
+  ArenaBattleVoteResponseSchema,
+  ArenaBattleStopResponseSchema,
+  ArenaBattleUpdateSchema,
+  ArenaSingleTurnResponseSchema,
   HubExecutionAgentCreateResponseSchema,
   HubExecutionAgentValidateResponseSchema,
   HubExecutionControlResponseSchema,

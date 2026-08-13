@@ -67,6 +67,22 @@ describe("buildWorkspaceStructureProjects", () => {
     });
   });
 
+  test("keeps internal workspaces out of normal workspace navigation", () => {
+    const visible = workspace("visible", "prj_a", "/a/app");
+    const internal = { ...workspace("arena-a", "prj_a", "/a/app-arena"), internal: true };
+    const result = buildWorkspaceStructureProjects({
+      sessions: [
+        {
+          serverId: "host-a",
+          projects: [project({ id: "prj_a", key: null, root: "/a/app" })],
+          workspaces: [visible, internal],
+        },
+      ],
+    });
+
+    expect(result[0]?.workspaceKeys).toEqual(["host-a:visible"]);
+  });
+
   test("keeps two clones with the same key on one host separate", () => {
     const key = "remote:github.com/acme/app";
     const result = buildWorkspaceStructureProjects({

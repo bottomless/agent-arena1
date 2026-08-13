@@ -34,6 +34,7 @@ type DraftAgentMachineState =
 type DraftAgentMachineEvent =
   | { type: "DRAFT_SET_ERROR"; message: string }
   | { type: "SUBMIT"; attempt: CreateAttempt }
+  | { type: "CREATE_SUCCEEDED" }
   | { type: "CREATE_FAILED"; message: string };
 
 function assertNever(value: never): never {
@@ -53,6 +54,9 @@ function reducer(
     }
     case "SUBMIT": {
       return { tag: "creating", attempt: event.attempt };
+    }
+    case "CREATE_SUCCEEDED": {
+      return { tag: "draft", errorMessage: "" };
     }
     case "CREATE_FAILED": {
       if (state.tag !== "creating") {
@@ -213,6 +217,7 @@ export function useDraftAgentCreateFlow<TDraftAgent, TCreateResult>({
         }
 
         await onCreateSuccess({ result: createResult.result, attempt });
+        dispatch({ type: "CREATE_SUCCEEDED" });
       } catch (error) {
         const resolved =
           error instanceof Error ? error : new Error(t("composer.errors.failedToCreateAgent"));

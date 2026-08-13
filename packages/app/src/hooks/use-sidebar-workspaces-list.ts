@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo } from "react";
+import { useShallow } from "zustand/shallow";
 import { useStoreWithEqualityFn } from "zustand/traditional";
 import { useCreateFlowStore } from "@/stores/create-flow-store";
 import { useSessionStore } from "@/stores/session-store";
@@ -11,15 +12,14 @@ import { useSidebarViewStore } from "@/stores/sidebar-view-store";
 import {
   buildSidebarWorkspacePlacementModel,
   computeSidebarOrderUpdates,
-  createSidebarWorkspaceEntry,
   deriveProjectStatusBucket,
   deriveSidebarLoadingState,
   type ProjectStatusSession,
   type SidebarProjectEntry,
-  type SidebarWorkspaceEntry,
   type SidebarWorkspacePlacement,
 } from "./sidebar-workspaces-view-model";
 import type { SidebarStateBucket } from "@/utils/sidebar-agent-state";
+import { useArenaStore } from "@/arena/store";
 
 export {
   appendMissingOrderKeys,
@@ -134,13 +134,38 @@ export function useSidebarWorkspacesList(options?: {
   const hydratedServerIds = useHydratedWorkspaceServerIds(serverIds);
 
   const hostProjects = useHostProjects(hydratedServerIds);
+  const hiddenArenaWorkspaceKeys = useArenaStore(
+    useShallow((state) => {
+      const keys: string[] = [];
+      for (const [battleKey, battle] of Object.entries(state.battles)) {
+        if (battle.decision !== null || battle.status === "error" || battle.status === "stopped") {
+          continue;
+        }
+        const separator = battleKey.indexOf(":");
+        const serverId = separator >= 0 ? battleKey.slice(0, separator) : "";
+        for (const side of ["A", "B"] as const) {
+          const workspaceId = battle.sides[side].workspaceId;
+          if (serverId && workspaceId) keys.push(`${serverId}:${workspaceId}`);
+        }
+      }
+      return keys.sort();
+    }),
+  );
+  const visibleHostProjects = useMemo(() => {
+    if (hiddenArenaWorkspaceKeys.length === 0) return hostProjects;
+    const hidden = new Set(hiddenArenaWorkspaceKeys);
+    return hostProjects.map((project) => ({
+      ...project,
+      workspaceKeys: project.workspaceKeys.filter((key) => !hidden.has(key)),
+    }));
+  }, [hiddenArenaWorkspaceKeys, hostProjects]);
 
   const sidebarModel = useMemo(
     () =>
       buildSidebarWorkspacePlacementModel({
-        projects: hostProjects,
+        projects: visibleHostProjects,
       }),
-    [hostProjects],
+    [visibleHostProjects],
   );
 
   const projects = sidebarModel.projects.length > 0 ? sidebarModel.projects : EMPTY_PROJECTS;

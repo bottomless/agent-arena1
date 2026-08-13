@@ -102,12 +102,14 @@ import { isWeb } from "@/constants/platform";
 import type { Theme } from "@/styles/theme";
 import { recordRenderProfileReasons } from "@/utils/render-profiler";
 import { useRetainedPanelActive } from "@/components/retained-panel";
+import { ArenaBattleSummaryCard, getArenaBattleIdFromToolMetadata } from "@/arena/battle-view";
 
 function renderLiveAuxiliaryNode(input: {
   pendingPermissions: ReactNode;
   turnFooter: ReactNode;
+  inlineContent: ReactNode;
 }): ReactNode {
-  if (!input.pendingPermissions && !input.turnFooter) {
+  if (!input.pendingPermissions && !input.turnFooter && !input.inlineContent) {
     return null;
   }
   return (
@@ -116,6 +118,11 @@ function renderLiveAuxiliaryNode(input: {
       {input.pendingPermissions ? (
         <View style={stylesheet.contentWrapper}>
           <View style={stylesheet.listHeaderContent}>{input.pendingPermissions}</View>
+        </View>
+      ) : null}
+      {input.inlineContent ? (
+        <View style={stylesheet.contentWrapper}>
+          <View style={stylesheet.inlineContent}>{input.inlineContent}</View>
         </View>
       ) : null}
     </>
@@ -254,6 +261,7 @@ export interface AgentStreamViewProps {
     progressKey: string | null;
     onLoadOlder: () => boolean | Promise<boolean>;
   };
+  inlineContent?: ReactNode;
 }
 
 const AGENT_CAPABILITY_FLAG_KEYS: (keyof AgentCapabilityFlags)[] = [
@@ -297,6 +305,7 @@ const AgentStreamViewComponent = forwardRef<AgentStreamViewHandle, AgentStreamVi
       onOpenWorkspaceFile,
       readOnly = false,
       historyPagination,
+      inlineContent = null,
     },
     ref,
   ) {
@@ -690,6 +699,13 @@ const AgentStreamViewComponent = forwardRef<AgentStreamViewHandle, AgentStreamVi
         if (payload.source === "agent") {
           const data = payload.data;
 
+          if (data.name === "arena_battle") {
+            const battleId = getArenaBattleIdFromToolMetadata(data.metadata);
+            if (battleId) {
+              return <ArenaBattleSummaryCard serverId={resolvedServerId} battleId={battleId} />;
+            }
+          }
+
           if (
             data.name === "speak" &&
             data.detail.type === "unknown" &&
@@ -733,7 +749,7 @@ const AgentStreamViewComponent = forwardRef<AgentStreamViewHandle, AgentStreamVi
           />
         );
       },
-      [context.cwd, setInlineDetailsExpanded, handleToolCallOpenFile],
+      [context.cwd, handleToolCallOpenFile, resolvedServerId, setInlineDetailsExpanded],
     );
 
     const renderToolCallItem = useCallback(
@@ -949,8 +965,9 @@ const AgentStreamViewComponent = forwardRef<AgentStreamViewHandle, AgentStreamVi
       return renderLiveAuxiliaryNode({
         pendingPermissions: auxiliary.pendingPermissions,
         turnFooter: auxiliary.turnFooter,
+        inlineContent,
       });
-    }, [auxiliary.pendingPermissions, auxiliary.turnFooter]);
+    }, [auxiliary.pendingPermissions, auxiliary.turnFooter, inlineContent]);
 
     const renderers = useMemo<StreamSegmentRenderers>(
       () => ({
@@ -1133,6 +1150,7 @@ function agentStreamViewPropsEqual(
   if (left.pendingMessageSubmissions !== right.pendingMessageSubmissions) {
     reasons.push("pendingMessageSubmissions");
   }
+  if (left.inlineContent !== right.inlineContent) reasons.push("inlineContent");
   if (left.turnPresentation !== right.turnPresentation) reasons.push("turnPresentation");
   if (
     !bottomAnchorRouteRequestsEqual(left.routeBottomAnchorRequest, right.routeBottomAnchorRequest)
@@ -1498,6 +1516,10 @@ const stylesheet = StyleSheet.create((theme) => ({
   },
   listHeaderContent: {
     gap: theme.spacing[3],
+  },
+  inlineContent: {
+    marginTop: theme.spacing[4],
+    marginBottom: theme.spacing[2],
   },
   syncingIndicator: {
     flexDirection: "row",

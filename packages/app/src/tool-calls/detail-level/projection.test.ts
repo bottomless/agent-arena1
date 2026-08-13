@@ -63,6 +63,20 @@ function project(input: {
 }
 
 describe("tool call detail-level projection", () => {
+  it("keeps Arena battle summaries out of generic tool-call groups", () => {
+    const ordinary = toolCall("1", { type: "shell", command: "one" });
+    const battle = toolCall(
+      "2",
+      { type: "plain_text", label: "Battle", text: "A vs B" },
+      { name: "arena_battle" },
+    );
+    const result = project({ level: "overview", tail: [ordinary, battle] });
+
+    expect(result.tail).toEqual([ordinary, battle]);
+    expect(result.groupsByHostId.has(ordinary.id)).toBe(true);
+    expect(result.groupsByHostId.has(battle.id)).toBe(false);
+  });
+
   it("passes detailed timelines through without grouping work", () => {
     const tail = [toolCall("1", { type: "shell", command: "one" })];
     const head = [toolCall("2", { type: "shell", command: "two" })];

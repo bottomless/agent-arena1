@@ -80,6 +80,7 @@ export function buildWorkspaceStructureProjects(input: {
 
   for (const session of input.sessions) {
     for (const workspace of session.workspaces) {
+      if (workspace.internal) continue;
       const viewKey = viewKeyByServerProjectId.get(session.serverId)?.get(workspace.projectId);
       if (!viewKey) continue;
       byProject.get(viewKey)?.workspaces.push({

@@ -76,6 +76,10 @@ const PersistedWorkspaceRecordSchema = z.object({
     .optional()
     .transform((value) => value ?? null),
   isPaseoOwnedWorktree: z.boolean().default(false),
+  // Internal workspaces back system-managed operations such as Arena sides.
+  // They remain addressable and persisted, but stay out of normal workspace UX
+  // until the operation explicitly promotes one.
+  internal: z.boolean().default(false),
   mainRepoRoot: z.string().nullable().default(null),
   createdAt: z.string(),
   updatedAt: z.string(),
@@ -550,6 +554,7 @@ export function createPersistedWorkspaceRecord(input: {
   worktreeRoot?: string | null;
   baseBranch?: string | null;
   isPaseoOwnedWorktree?: boolean;
+  internal?: boolean;
   mainRepoRoot?: string | null;
   createdAt: string;
   updatedAt: string;
@@ -564,6 +569,7 @@ export function createPersistedWorkspaceRecord(input: {
     worktreeRoot: input.worktreeRoot ?? null,
     baseBranch: input.baseBranch ?? null,
     isPaseoOwnedWorktree: input.isPaseoOwnedWorktree ?? false,
+    internal: input.internal ?? false,
     mainRepoRoot: input.mainRepoRoot ?? null,
     archivedAt: input.archivedAt ?? null,
     autoArchivedChangeRequestUrl: input.autoArchivedChangeRequestUrl ?? null,

@@ -65,6 +65,7 @@ CLAUDE.local.md
 .debug.conversations/
 .debug/
 .dev/
+.arena-data/
 .paseo/
 .wrangler/
 **/.wrangler/

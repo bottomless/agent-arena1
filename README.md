@@ -160,6 +160,7 @@ Then use them in any agent conversation:
 Quick monorepo package map:
 
 - `packages/server`: Paseo daemon (agent process orchestration, WebSocket API, MCP server)
+- `packages/arena-proxy`: blinded OpenRouter-compatible backend for [Paseo Arena](docs/arena.md)
 - `packages/app`: Expo client (iOS, Android, web)
 - `packages/cli`: `paseo` CLI for daemon and agent workflows
 - `packages/desktop`: Electron desktop app

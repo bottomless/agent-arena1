@@ -1529,6 +1529,8 @@ export class VoiceAssistantWebSocketServer {
       desktopManaged: this.daemonRuntimeConfig?.desktopManaged === true,
       ...(this.serverCapabilities ? { capabilities: this.serverCapabilities } : {}),
       features: {
+        // COMPAT(arenaBattles): added in v0.4.0-beta.1, remove after 2027-02-12 once app floor >= v0.4.0-beta.1.
+        arenaBattles: true,
         // COMPAT(providersSnapshot): keep optional until all clients rely on snapshot flow.
         providersSnapshot: true,
         // COMPAT(providersSnapshotCwd): added in v0.3.2, remove gate after 2027-02-10.

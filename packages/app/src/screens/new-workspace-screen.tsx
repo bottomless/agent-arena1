@@ -11,6 +11,9 @@ import { createNameId } from "mnemonic-id";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { ChevronDown, Folder, FolderPlus, GitBranch, GitPullRequest } from "lucide-react-native";
 import { Composer } from "@/composer";
+import { useArenaSupported } from "@/arena/capability";
+import { ArenaComposerControls } from "@/arena/controls";
+import { arenaChatKey, useArenaStore } from "@/arena/store";
 import { FileDropZone } from "@/components/file-drop/file-drop-zone";
 import {
   resolveComposerAttachmentSubmitFormat,
@@ -754,6 +757,7 @@ interface SubmitDraftInput {
   provider: AgentProvider;
   composerState: NewWorkspaceComposerState;
   supportsForgeSearch: boolean;
+  arenaPreferenceKey: string;
 }
 
 type NewWorkspaceComposerState = NonNullable<
@@ -858,9 +862,9 @@ interface CreateChatAgentInput {
   draftKey: string;
   draftId?: string;
   supportsForgeSearch: boolean;
+  arenaPreferenceKey: string;
   labels: {
     composerStateRequired: string;
-    selectModel: string;
   };
 }
 
@@ -924,10 +928,7 @@ async function runCreateChatAgent(input: CreateChatAgentInput): Promise<void> {
   if (!composerState) {
     throw new Error(input.labels.composerStateRequired);
   }
-  const provider = composerState.selectedProvider;
-  if (!provider) {
-    throw new Error(input.labels.selectModel);
-  }
+  const provider: AgentProvider = "opencode";
   const attachmentSubmitFormat = resolveComposerAttachmentSubmitFormat({
     supportsForgeAttachments: input.supportsForgeSearch,
   });
@@ -947,10 +948,11 @@ async function runCreateChatAgent(input: CreateChatAgentInput): Promise<void> {
     provider,
     composerState,
   });
+  const submissionDraftId = input.draftId?.trim() || generateDraftId();
   submitWorkspaceDraft({
     serverId,
     draftKey,
-    draftId: input.draftId,
+    draftId: submissionDraftId,
     initialSetup,
     workspaceId: ensuredWorkspace.id,
     workspaceDirectory: ensuredWorkspace.workspaceDirectory,
@@ -959,6 +961,7 @@ async function runCreateChatAgent(input: CreateChatAgentInput): Promise<void> {
     provider,
     composerState,
     supportsForgeSearch: input.supportsForgeSearch,
+    arenaPreferenceKey: input.arenaPreferenceKey,
   });
 }
 
@@ -1037,6 +1040,9 @@ function submitWorkspaceDraft(input: SubmitDraftInput): void {
     initialSetup,
   } = input;
   const draftId = draftIdInput?.trim() || generateDraftId();
+  useArenaStore
+    .getState()
+    .inheritPreferences(input.arenaPreferenceKey, [arenaChatKey(serverId, draftId)]);
   const clientMessageId = generateMessageId();
   const timestamp = Date.now();
   const wirePayload = splitComposerAttachmentsForSubmit(attachments, {
@@ -1572,6 +1578,7 @@ export function NewWorkspaceScreen({
   // COMPAT(workspaceMultiplicity): added in v0.1.97, drop the gate when floor >= v0.1.97
   const supportsWorkspaceMultiplicity = useHostFeature(selectedServerId, "workspaceMultiplicity");
   const supportsForgeSearch = useHostFeature(selectedServerId, "forgeSearch");
+  const arenaSupported = useArenaSupported(selectedServerId);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [createdWorkspace, setCreatedWorkspace] = useState<ReturnType<
     typeof normalizeWorkspaceDescriptor
@@ -1672,6 +1679,7 @@ export function NewWorkspaceScreen({
     projects: projectIconTargets,
   });
   const draftKey = buildNewWorkspaceDraftKey(draftId);
+  const arenaPreferenceKey = arenaChatKey(selectedServerId, draftKey);
   const forkDraftSetup = usePendingWorkspaceDraftSetup(draftId);
   const draftContextScopeKey = useDraftWorkspaceAttachmentScopeKey(draftId);
   const visibleDraftContextScopeKeys = useMemo(
@@ -2074,9 +2082,9 @@ export function NewWorkspaceScreen({
           draftKey,
           draftId,
           supportsForgeSearch,
+          arenaPreferenceKey,
           labels: {
             composerStateRequired: t("newWorkspace.errors.composerStateRequired"),
-            selectModel: t("newWorkspace.errors.selectModel"),
           },
         });
       } catch (error) {
@@ -2088,6 +2096,7 @@ export function NewWorkspaceScreen({
     },
     [
       composerState,
+      arenaPreferenceKey,
       draftId,
       draftKey,
       ensureWorkspace,
@@ -2200,15 +2209,15 @@ export function NewWorkspaceScreen({
     [composerKeyboardStyle],
   );
 
-  const agentControlsWithDisabled = useMemo(
-    () =>
-      composerState
-        ? {
-            ...composerState.agentControls,
-            disabled: isPending,
-          }
-        : undefined,
-    [composerState, isPending],
+  const arenaToolbarControls = useMemo(
+    () => (
+      <ArenaComposerControls
+        preferenceKey={arenaPreferenceKey}
+        supported={arenaSupported}
+        disabled={isPending}
+      />
+    ),
+    [arenaPreferenceKey, arenaSupported, isPending],
   );
 
   const pickerEmptyText =
@@ -2343,7 +2352,8 @@ export function NewWorkspaceScreen({
               autoFocus
               autoFocusKey={launchFocusKey}
               commandDraftConfig={composerState?.commandDraftConfig}
-              agentControls={agentControlsWithDisabled}
+              toolbarControls={arenaToolbarControls}
+              allowAttachments={false}
             />
           )}
           {errorMessage ? <Text style={styles.errorText}>{errorMessage}</Text> : null}

@@ -14,6 +14,7 @@ import {
   useCallback,
   useMemo,
   memo,
+  cloneElement,
   type ReactElement,
   type ReactNode,
 } from "react";
@@ -290,6 +291,8 @@ function resolveContextWindowPlacement(
 
 interface RenderLeftContentArgs {
   agentControls: DraftAgentControlsProps | undefined;
+  toolbarControls: ReactElement<{ disabled?: boolean }> | undefined;
+  toolbarControlsDisabled: boolean;
   agentId: string;
   serverId: string;
   focusInput: () => void;
@@ -299,8 +302,22 @@ interface RenderLeftContentArgs {
 }
 
 function renderLeftContent(args: RenderLeftContentArgs): ReactElement | null {
-  const { agentControls, agentId, serverId, focusInput, isCompactLayout, isPaneFocused } = args;
+  const {
+    agentControls,
+    toolbarControls,
+    toolbarControlsDisabled,
+    agentId,
+    serverId,
+    focusInput,
+    isCompactLayout,
+    isPaneFocused,
+  } = args;
   if (!args.showAgentControls) return null;
+  if (toolbarControls) {
+    return cloneElement(toolbarControls, {
+      disabled: toolbarControls.props.disabled === true || toolbarControlsDisabled,
+    });
+  }
   if (resolveAgentControlsMode(agentControls) === "draft" && agentControls) {
     return <DraftAgentControls {...agentControls} isCompactLayout={isCompactLayout} />;
   }
@@ -869,6 +886,10 @@ interface ComposerProps {
   onAttentionPromptSend?: () => void;
   /** Controlled agent controls rendered in input area (draft flows). */
   agentControls?: DraftAgentControlsProps;
+  /** Replaces all provider/model/mode controls in the composer toolbar. */
+  toolbarControls?: ReactElement<{ disabled?: boolean }>;
+  /** Hides and disables all attachment entry points. */
+  allowAttachments?: boolean;
   /** Extra styles merged onto the message input wrapper (e.g. elevated background). */
   inputWrapperStyle?: import("react-native").ViewStyle;
   /** When true, a parent wrapper owns the keyboard shift, so the composer skips its own. */
@@ -1071,6 +1092,8 @@ export function Composer({
   onAttentionInputFocus,
   onAttentionPromptSend,
   agentControls,
+  toolbarControls,
+  allowAttachments = true,
   inputWrapperStyle,
   externalKeyboardShift,
   isCompactLayout: isCompactLayoutOverride,
@@ -1136,11 +1159,11 @@ export function Composer({
     (state) => state.sessions[serverId]?.serverInfo?.features?.forgeSearch === true,
   );
   const githubAutoAttach = useComposerGithubAutoAttach({
-    text: userInput,
+    text: allowAttachments ? userInput : "",
     remoteUrl: resolveCheckoutRemoteUrl(checkoutStatusQuery.status),
-    attachments,
-    client,
-    isConnected,
+    attachments: allowAttachments ? attachments : [],
+    client: allowAttachments ? client : null,
+    isConnected: allowAttachments && isConnected,
     serverId,
     cwd,
     supportsForgeSearch,
@@ -1235,19 +1258,21 @@ export function Composer({
 
   const addImages = useCallback(
     (images: ImageAttachment[]) => {
+      if (!allowAttachments) return;
       setSelectedAttachments((prev) => [
         ...prev,
         ...images.map((metadata) => ({ kind: "image" as const, metadata })),
       ]);
     },
-    [setSelectedAttachments],
+    [allowAttachments, setSelectedAttachments],
   );
 
   const addFiles = useCallback(
     (files: UserComposerAttachment[]) => {
+      if (!allowAttachments) return;
       setSelectedAttachments((prev) => [...prev, ...files]);
     },
-    [setSelectedAttachments],
+    [allowAttachments, setSelectedAttachments],
   );
 
   const focusInput = useCallback(() => {
@@ -1263,7 +1288,7 @@ export function Composer({
 
   const handleWorkspaceFileDropped = useCallback(
     (payload: WorkspaceFileDragPayload) => {
-      if (!workspaceId) {
+      if (!allowAttachments || !workspaceId) {
         return;
       }
       const attachment = resolveWorkspaceFileDrop({ payload, serverId, workspaceId });
@@ -1273,7 +1298,7 @@ export function Composer({
       setSelectedAttachments((current) => appendWorkspaceFileAttachment(current, attachment));
       focusInput();
     },
-    [focusInput, serverId, setSelectedAttachments, workspaceId],
+    [allowAttachments, focusInput, serverId, setSelectedAttachments, workspaceId],
   );
 
   useEffect(() => {
@@ -1891,6 +1916,7 @@ export function Composer({
   );
 
   const attachmentMenuItems = useMemo<AttachmentMenuItem[]>(() => {
+    if (!allowAttachments) return [];
     const items: AttachmentMenuItem[] = [
       {
         id: "image",
@@ -1932,7 +1958,7 @@ export function Composer({
       },
     );
     return items;
-  }, [forgePresentation, handlePasteImage, handlePickFile, handlePickImage, t]);
+  }, [allowAttachments, forgePresentation, handlePasteImage, handlePickFile, handlePickImage, t]);
 
   const handleToggleGithubItem = useCallback(
     (item: ForgeSearchItem) => {
@@ -1958,6 +1984,9 @@ export function Composer({
     () =>
       renderLeftContent({
         agentControls,
+        toolbarControls,
+        toolbarControlsDisabled:
+          isProcessing || isSubmitLoading || isUploadingFile || isAgentRunning,
         agentId,
         serverId,
         focusInput,
@@ -1967,10 +1996,15 @@ export function Composer({
       }),
     [
       agentControls,
+      toolbarControls,
       agentId,
       focusInput,
+      isAgentRunning,
       isCompactLayout,
       isPaneFocused,
+      isProcessing,
+      isSubmitLoading,
+      isUploadingFile,
       mode.showAgentControls,
       serverId,
     ],
@@ -2086,7 +2120,7 @@ export function Composer({
       onGenericFiles: handleGenericFilesDropped,
       onWorkspaceFile: handleWorkspaceFileDropped,
     },
-    { disabled: isSubmitLoadingVisible },
+    { disabled: !allowAttachments || isSubmitLoadingVisible },
   );
 
   const messageInputAutoFocus = autoFocus && isDesktopWebBreakpoint;

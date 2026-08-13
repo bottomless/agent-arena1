@@ -66,6 +66,7 @@ import { showProviderNoticeToast } from "@/utils/provider-notice-toast";
 import { applyCheckoutStatusUpdateFromEvent } from "@/git/checkout-status-cache";
 import { useProviderSubagentStore } from "@/subagents/provider-store";
 import { revalidateSessionAfterResume } from "@/contexts/session-resume-revalidation";
+import { useArenaStore } from "@/arena/store";
 
 // Re-export types from session-store and draft-store for backward compatibility
 export type { DraftInput } from "@/stores/draft-store";
@@ -754,6 +755,11 @@ function SessionProviderInternal({ children, serverId, client }: SessionProvider
       useProviderSubagentStore.getState().applyUpdate(serverId, message.payload);
     });
 
+    const unsubArenaBattleUpdate = client.on("arena.battle.update", (message) => {
+      if (message.type !== "arena.battle.update") return;
+      useArenaStore.getState().upsertBattle(serverId, message.payload.battle);
+    });
+
     const unsubScriptStatusUpdate = client.on("script_status_update", (message) => {
       if (message.type !== "script_status_update") return;
       setWorkspaces(serverId, (prev) => patchWorkspaceScripts(prev, message.payload));
@@ -947,6 +953,7 @@ function SessionProviderInternal({ children, serverId, client }: SessionProvider
       unsubAgentStream();
       unsubAgentTimeline();
       unsubProviderSubagentUpdate();
+      unsubArenaBattleUpdate();
       unsubAgentAttention();
       unsubScriptStatusUpdate();
       unsubCheckoutStatusUpdate();

@@ -15,6 +15,7 @@ import {
   SessionInboundMessageSchema,
   type ServerInfoStatusPayload,
 } from "@getpaseo/protocol/messages";
+import type { ArenaBattle, ArenaThinkingLevel } from "@getpaseo/protocol/arena";
 import { validateWSOutboundMessage } from "@getpaseo/protocol/validation/ws-outbound";
 import type {
   AgentStreamEventPayload,
@@ -2917,6 +2918,85 @@ export class DaemonClient {
     }
 
     return payload;
+  }
+
+  async startArenaBattle(input: {
+    sourceAgentId?: string;
+    workspaceId: string;
+    prompt: string;
+  }): Promise<ArenaBattle> {
+    const payload =
+      await this.sendNamespacedCorrelatedSessionRequest<"arena.battle.start.response">({
+        message: {
+          type: "arena.battle.start.request",
+          workspaceId: input.workspaceId,
+          prompt: input.prompt,
+          ...(input.sourceAgentId ? { sourceAgentId: input.sourceAgentId } : {}),
+        },
+        timeout: 120_000,
+      });
+    return payload.battle;
+  }
+
+  async getArenaBattle(battleId: string): Promise<ArenaBattle> {
+    const payload = await this.sendNamespacedCorrelatedSessionRequest<"arena.battle.get.response">({
+      message: { type: "arena.battle.get.request", battleId },
+    });
+    return payload.battle;
+  }
+
+  async listArenaBattles(filter?: {
+    agentId?: string;
+    workspaceId?: string;
+  }): Promise<ArenaBattle[]> {
+    const payload = await this.sendNamespacedCorrelatedSessionRequest<"arena.battle.list.response">(
+      {
+        message: {
+          type: "arena.battle.list.request",
+          ...(filter?.agentId ? { agentId: filter.agentId } : {}),
+          ...(filter?.workspaceId ? { workspaceId: filter.workspaceId } : {}),
+        },
+      },
+    );
+    return payload.battles;
+  }
+
+  async voteArenaBattle(battleId: string, decision: "A" | "B" | "tie"): Promise<ArenaBattle> {
+    const payload = await this.sendNamespacedCorrelatedSessionRequest<"arena.battle.vote.response">(
+      {
+        message: { type: "arena.battle.vote.request", battleId, decision },
+        timeout: 120_000,
+      },
+    );
+    return payload.battle;
+  }
+
+  async stopArenaBattle(battleId: string): Promise<ArenaBattle> {
+    const payload = await this.sendNamespacedCorrelatedSessionRequest<"arena.battle.stop.response">(
+      {
+        message: { type: "arena.battle.stop.request", battleId },
+        timeout: 120_000,
+      },
+    );
+    return payload.battle;
+  }
+
+  async runArenaSingleTurn(input: {
+    agentId?: string;
+    workspaceId: string;
+    prompt: string;
+    thinkingLevel: ArenaThinkingLevel;
+  }): Promise<{ agentId: string; workspaceId: string }> {
+    return this.sendNamespacedCorrelatedSessionRequest<"arena.single.turn.response">({
+      message: {
+        type: "arena.single.turn.request",
+        workspaceId: input.workspaceId,
+        prompt: input.prompt,
+        thinkingLevel: input.thinkingLevel,
+        ...(input.agentId ? { agentId: input.agentId } : {}),
+      },
+      timeout: 120_000,
+    });
   }
 
   // ============================================================================

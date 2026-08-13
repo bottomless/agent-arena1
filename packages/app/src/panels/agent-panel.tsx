@@ -103,6 +103,11 @@ import type { WorkspaceFileOpenRequest } from "@/workspace/file-open";
 import { navigateToAgent } from "@/utils/navigate-to-agent";
 import { deriveSidebarStateBucket } from "@/utils/sidebar-agent-state";
 import { buildDraftAgentSetup, type ClientSlashCommand } from "@/client-slash-commands";
+import type { MessagePayload } from "@/composer/types";
+import { ArenaComposerControls } from "@/arena/controls";
+import { ArenaBattleView, useArenaBattleForAgent } from "@/arena/battle-view";
+import { arenaUnavailableMessage, useArenaSupported } from "@/arena/capability";
+import { arenaChatKey, getArenaPreferences, useArenaStore } from "@/arena/store";
 
 interface ChatAgentStateShape {
   serverId: string | null;
@@ -1258,6 +1263,41 @@ const ChatAgentReadyContent = memo(function ChatAgentReadyContent({
       composerState,
     ],
   );
+  const activeBattle = useArenaBattleForAgent(serverId, agentId);
+  const handleBattleDecided = useCallback(
+    (battle: NonNullable<typeof activeBattle>) => {
+      const winnerId = battle.winningSide ? battle.sides[battle.winningSide].agentId : null;
+      if (winnerId) navigateToAgent({ serverId, agentId: winnerId });
+    },
+    [serverId],
+  );
+  const openBattle =
+    activeBattle &&
+    activeBattle.decision === null &&
+    activeBattle.status !== "stopped" &&
+    activeBattle.status !== "error"
+      ? activeBattle
+      : null;
+  const openBattleId = openBattle?.id ?? null;
+  useEffect(() => {
+    if (!openBattleId) {
+      return;
+    }
+    handleMessageSent();
+  }, [handleMessageSent, openBattleId]);
+  const battleInlineContent = useMemo(
+    () =>
+      openBattle ? (
+        <ArenaBattleView
+          serverId={serverId}
+          battle={openBattle}
+          toast={toastApi}
+          onDecided={handleBattleDecided}
+          inline
+        />
+      ) : null,
+    [handleBattleDecided, openBattle, serverId, toastApi],
+  );
   const streamSection = (
     <RenderProfile id={`AgentStreamSection:${agentId}`}>
       <AgentStreamSection
@@ -1269,10 +1309,11 @@ const ChatAgentReadyContent = memo(function ChatAgentReadyContent({
         hasAppliedAuthoritativeHistory={hasAppliedAuthoritativeHistory}
         toast={toastApi}
         onOpenWorkspaceFile={onOpenWorkspaceFile}
+        inlineContent={battleInlineContent}
       />
     </RenderProfile>
   );
-  const composerSection = (
+  const composerSection = openBattle ? null : (
     <RenderProfile id={`AgentComposerSection:${agentId}`}>
       <AgentComposerSection
         agentId={agentId}
@@ -1341,6 +1382,7 @@ const AgentStreamSection = memo(function AgentStreamSection({
   hasAppliedAuthoritativeHistory,
   toast,
   onOpenWorkspaceFile,
+  inlineContent,
 }: {
   streamViewRef: React.RefObject<AgentStreamViewHandle | null>;
   serverId: string;
@@ -1350,6 +1392,7 @@ const AgentStreamSection = memo(function AgentStreamSection({
   hasAppliedAuthoritativeHistory: boolean;
   toast: ReturnType<typeof useToastHost>["api"];
   onOpenWorkspaceFile?: (request: WorkspaceFileOpenRequest) => void;
+  inlineContent?: React.ReactNode;
 }) {
   const streamItemsRaw = useSessionStore((state) =>
     agentId ? state.sessions[serverId]?.agentStreamTail?.get(agentId) : undefined,
@@ -1410,6 +1453,7 @@ const AgentStreamSection = memo(function AgentStreamSection({
       pendingMessageSubmissions={pendingMessageSubmissions}
       turnPresentation={turnPresentation}
       onOpenWorkspaceFile={onOpenWorkspaceFile}
+      inlineContent={inlineContent}
     />
   );
 });
@@ -1498,6 +1542,58 @@ function ActiveAgentComposer({
   );
   const paneContext = usePaneContext();
   const { workspaceId, tabId, retargetCurrentTab, openTab } = paneContext;
+  const client = useHostRuntimeClient(serverId);
+  const arenaSupported = useArenaSupported(serverId);
+  const arenaPreferenceKey = arenaChatKey(serverId, agentId);
+  const turnPresentation = useSessionStore(
+    useShallow((state) => selectAgentTurnPresentation(state.sessions[serverId], agentId)),
+  );
+  const upsertBattle = useArenaStore((state) => state.upsertBattle);
+  const inheritPreferences = useArenaStore((state) => state.inheritPreferences);
+  const handleArenaSubmit = useCallback(
+    async (payload: MessagePayload) => {
+      if (!client) throw new Error("Host is disconnected.");
+      if (!arenaSupported) throw new Error(arenaUnavailableMessage());
+      if (!workspaceId) throw new Error("This agent is not attached to a workspace.");
+      if (payload.attachments.length > 0) {
+        throw new Error("Arena turns do not support attachments yet.");
+      }
+      const preferences = getArenaPreferences(arenaPreferenceKey);
+      if (preferences.battleMode) {
+        const battle = await client.startArenaBattle({
+          sourceAgentId: agentId,
+          workspaceId,
+          prompt: payload.text,
+        });
+        upsertBattle(serverId, battle);
+        inheritPreferences(
+          arenaPreferenceKey,
+          [battle.sides.A.agentId, battle.sides.B.agentId]
+            .filter((id): id is string => Boolean(id))
+            .map((id) => arenaChatKey(serverId, id)),
+        );
+        return;
+      }
+      const result = await client.runArenaSingleTurn({
+        agentId,
+        workspaceId,
+        prompt: payload.text,
+        thinkingLevel: preferences.thinkingLevel,
+      });
+      inheritPreferences(arenaPreferenceKey, [arenaChatKey(serverId, result.agentId)]);
+      if (result.agentId !== agentId) navigateToAgent({ serverId, agentId: result.agentId });
+    },
+    [
+      agentId,
+      arenaPreferenceKey,
+      arenaSupported,
+      client,
+      inheritPreferences,
+      serverId,
+      upsertBattle,
+      workspaceId,
+    ],
+  );
   const { archiveAgent } = useArchiveAgent();
   const closeWorkspaceTab = useWorkspaceLayoutStore((state) => state.closeTab);
   const hideWorkspaceAgent = useWorkspaceLayoutStore((state) => state.hideAgent);
@@ -1610,6 +1706,16 @@ function ActiveAgentComposer({
     ],
     [insets.bottom, composerKeyboardStyle],
   );
+  const arenaToolbarControls = useMemo(
+    () => (
+      <ArenaComposerControls
+        preferenceKey={arenaPreferenceKey}
+        supported={arenaSupported}
+        disabled={isSubmitLoading || turnPresentation.isActive}
+      />
+    ),
+    [arenaPreferenceKey, arenaSupported, isSubmitLoading, turnPresentation.isActive],
+  );
 
   return (
     <ReanimatedAnimated.View style={inputAreaStyle} onLayout={onInputAreaLayout}>
@@ -1645,6 +1751,9 @@ function ActiveAgentComposer({
         onMessageSent={onMessageSent}
         onClientSlashCommand={handleClientSlashCommand}
         isCompactLayout={isCompactComposerLayout}
+        onSubmitMessage={handleArenaSubmit}
+        toolbarControls={arenaToolbarControls}
+        allowAttachments={false}
       />
     </ReanimatedAnimated.View>
   );

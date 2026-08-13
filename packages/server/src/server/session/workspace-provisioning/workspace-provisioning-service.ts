@@ -44,6 +44,7 @@ export interface CreateWorktreeWorkspaceInput {
   baseBranch: string | null;
   title: string | null;
   expectsInitialAgent?: boolean;
+  internal?: boolean;
 }
 
 export interface WorkspaceProvisioningService {
@@ -232,6 +233,7 @@ export function createWorkspaceProvisioningService(deps: {
         mainRepoRoot: repoRoot,
       }),
       title: input.title,
+      internal: input.internal,
       createdAt: timestamp,
       updatedAt: timestamp,
     });

@@ -258,6 +258,8 @@ export interface CreateAgentOptions {
   // undefined is an explicit decision: the agent never appears in the sidebar.
   workspaceId: string | undefined;
   owner?: AgentOwner;
+  /** Seed a logical continuation before the provider's first turn. */
+  timelineRows?: AgentTimelineRow[];
 }
 
 export interface AgentManagerOptions {
@@ -1110,6 +1112,7 @@ export class AgentManager {
       initialTitle: options.initialTitle,
       workspaceId: options.workspaceId,
       owner: options.owner,
+      timelineRows: options.timelineRows,
     });
   }
 
@@ -1991,11 +1994,15 @@ export class AgentManager {
     return true;
   }
 
-  async appendTimelineItem(agentId: string, item: AgentTimelineItem): Promise<void> {
+  async appendTimelineItem(
+    agentId: string,
+    item: AgentTimelineItem,
+    options?: { timestamp?: string },
+  ): Promise<void> {
     const agent = this.requireAgent(agentId);
     item = limitAgentTimelineItemContent(item);
     this.touchUpdatedAt(agent);
-    const row = this.recordTimeline(agentId, item);
+    const row = this.recordTimeline(agentId, item, options);
     this.dispatchStream(
       agentId,
       {
